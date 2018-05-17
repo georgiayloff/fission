@@ -225,8 +225,8 @@ update_github_charts_repo() {
     local chartsrepo=$2
 
     pushd $chartsrepo
-    cp $BUILDDIR/charts/fission-all-$version.tgz .
-    cp $BUILDDIR/charts/fission-core-$version.tgz .
+    cp $BUILDDIR/charts/fission-all-${version}.tgz .
+    cp $BUILDDIR/charts/fission-core-${version}.tgz .
     ./index.sh
     popd
 }
@@ -320,3 +320,8 @@ attach_github_release_charts $version
 update_github_charts_repo $version $chartsrepo
 
 generate_changelog $version
+
+echo "############ DONE #############"
+echo "Congratulation, ${version} is ready to ship !!"
+echo "Don't forget to push chart repo changes & update CHANGELOG.md"
+echo "##############################"
