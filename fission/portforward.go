@@ -9,11 +9,14 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
+
+	"github.com/fission/fission"
 )
 
 func findFreePort() (string, error) {
@@ -58,15 +61,17 @@ func runPortForward(kubeConfig string, labelSelector string, localPort string, f
 		fatal("Error getting controller pod for port-forwarding")
 	}
 
+	nsList := make([]string, 0)
+	namespaces := make(map[string][]*v1.Pod)
+
 	// make a useful error message if there is more than one install
 	if len(podList.Items) > 1 {
-		namespaces := make(map[string]struct{})
-		nsList := make([]string, 0)
 		for _, p := range podList.Items {
 			if _, ok := namespaces[p.Namespace]; !ok {
-				namespaces[p.Namespace] = struct{}{}
+				namespaces[p.Namespace] = []*v1.Pod{}
 				nsList = append(nsList, p.Namespace)
 			}
+			namespaces[p.Namespace] = append(namespaces[p.Namespace], &p)
 		}
 		if len(nsList) > 1 {
 			fatal(fmt.Sprintf("Found %v fission installs, set FISSION_NAMESPACE to one of: %v",
@@ -74,9 +79,21 @@ func runPortForward(kubeConfig string, labelSelector string, localPort string, f
 		}
 	}
 
-	// pick the first pod
-	podName := podList.Items[0].Name
-	podNameSpace := podList.Items[0].Namespace
+	pods, ok := namespaces[fissionNamespace]
+	if !ok {
+		fatal(fmt.Sprintf("Error finding fission install within the given namespace %v, please check FISSION_NAMESPACE is set properly", fissionNamespace))
+	}
+
+	var podName, podNameSpace string
+
+	// make sure we establish the connection to a healthy pod
+	for _, p := range pods {
+		if fission.IsReadyPod(p) {
+			podName = p.Name
+			podNameSpace = p.Namespace
+			break
+		}
+	}
 
 	// get the service and the target port
 	svcs, err := clientset.CoreV1().Services(podNameSpace).
